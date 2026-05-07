@@ -18,7 +18,7 @@
   })(window,document,'script','dataLayer','GTM-5VGVXX2M');</script>
   <!-- End Google Tag Manager -->
 
-  <!-- TikTok Pixel Code Start -->
+  <!-- TikTok Pixel Code Start (GTM 내부의 동일 태그는 일시정지 필수) -->
   <script>
   !function (w, d, t) {
     w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie","holdConsent","revokeConsent","grantConsent"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(
@@ -268,7 +268,7 @@
     <div class="crt-overlay"></div>
 
     <div class="top-nav">
-      <!-- 3. 다국어 버튼: lang-toggle 클래스가 Click Classes 트리거에 완벽히 잡히도록 구조 변경 -->
+      <!-- 다국어 버튼 -->
       <div style="font-size: 1.4rem; color: #aaa;" id="langBox">
         <span class="lang-toggle active" onclick="changeLang('EN')">EN</span> | 
         <span class="lang-toggle" onclick="changeLang('ZU')">ZU</span> | 
@@ -297,10 +297,8 @@
         </div>
         
         <h2 id="hero-subtitle" class="keep-all">Scan your veins for<br>K-Culture levels</h2>
-        
-        <!-- 2. 시작 버튼: 컨테이너 전체를 thumbBtn 아이디로 묶어 무조건 발동하게 조치 -->
-        <div class="scanner-container" id="thumbBtn" onclick="runIntroScan()">
-          <div class="thumb-btn" style="pointer-events: none;">
+        <div class="scanner-container">
+          <button class="thumb-btn" id="thumbBtn" onclick="runIntroScan()">
             <div class="local-laser"></div>
             <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5">
               <path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4" />
@@ -313,10 +311,9 @@
               <path d="M8.65 22c.21-.66.45-1.32.57-2" />
               <path d="M9 6.8a6 6 0 0 1 9 5.2v2" />
             </svg>
-          </div>
-          <p id="tap-text" class="keep-all" style="font-size: 1.6rem; font-weight: bold; pointer-events: none;">TAP TO START</p>
+          </button>
+          <p id="tap-text" class="keep-all" style="font-size: 1.6rem; font-weight: bold;">TAP TO START</p>
         </div>
-
       </div>
     </div>
 
@@ -377,7 +374,7 @@
         </svg>
       </div>
       
-      <!-- 4. GA4 요소 공개 트리거를 위한 id 삽입 (기존 레이아웃 파괴 방지) -->
+      <!-- GA4 요소 공개 트리거를 위한 id 유지 -->
       <div id="capture-area" class="result-text-box keep-all">
         <h1 id="res-perc" class="perc-val">80% K-BLOOD</h1>
         <h2 id="res-title" class="diag-title">KOREAN SURVIVOR</h2>
@@ -483,11 +480,16 @@
       if(!muted) playSfx('tap');
     }
 
+    // 틱톡용 재시도 맞춤 이벤트 다이렉트 전송 (GA4는 클릭 트리거 적용)
     function handleRetry() {
-      // 틱톡용 재시도 맞춤 이벤트 전송 (GA4는 클릭 트리거가 잡아냄)
-      window.dataLayer = window.dataLayer || [];
-      window.dataLayer.push({'event': 'TP-Retry'});
-      setTimeout(() => location.reload(), 400); // 100ms -> 400ms 증가하여 데이터 유실 방지
+      // 1세션 1회 제한
+      if (!sessionStorage.getItem('tp_retry_fired')) {
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({'event': 'TP-Retry'});
+        if(window.ttq) window.ttq.track('Retry');
+        sessionStorage.setItem('tp_retry_fired', 'true');
+      }
+      setTimeout(() => location.reload(), 400); // 틱톡, 구글로 이벤트 날아갈 시간 확보
     }
 
     const driveIds = {
@@ -589,12 +591,15 @@
       isTransitioning = true;
       playSfx('intro');
       
-      // 틱톡 픽셀 클릭 이벤트 (GA4는 클릭 트리거로 잡아냄)
-      window.dataLayer = window.dataLayer || [];
-      window.dataLayer.push({'event': 'TP-ClickButton'});
+      // 시작버튼 틱톡 다이렉트 호출 (1회 전송)
+      if (!sessionStorage.getItem('tp_click_fired')) {
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({'event': 'TP-ClickButton'});
+        if(window.ttq) window.ttq.track('ClickButton');
+        sessionStorage.setItem('tp_click_fired', 'true');
+      }
 
-      // inner div의 애니메이션을 위해 선택자 수정
-      const btn = document.querySelector('.thumb-btn');
+      const btn = document.getElementById('thumbBtn');
       btn.classList.add('scanning');
       
       setTimeout(() => {
@@ -678,11 +683,19 @@
     }
 
     function runLoading() {
-      // 틱톡 픽셀 완료 전환 (광고 로아스를 위해 1회 발송 제한)
-      if (!sessionStorage.getItem('conversion_fired')) {
+      // [광고 성과(ROAS) 무결성 보장] 브라우저 종료 후 재접속해도 중복 측정을 막는 강력한 localStorage 적용
+      if (!localStorage.getItem('roas_secured_v2')) {
+        
+        // 1. GTM 트리거 매핑
         window.dataLayer = window.dataLayer || [];
         window.dataLayer.push({'event': 'SubmitForm'});
-        sessionStorage.setItem('conversion_fired', 'true');
+        
+        // 2. 틱톡 다이렉트 추적 (결과화면 100% 작동 보장)
+        if (typeof window.ttq !== 'undefined') {
+          window.ttq.track('SubmitForm');
+        }
+        
+        localStorage.setItem('roas_secured_v2', 'true');
       }
       
       showStep('loading');
@@ -742,9 +755,13 @@
       const shareUrl = encodeURIComponent(window.location.href);
       const shareText = encodeURIComponent("Check out my K-Culture Level! 🩸 #KBloodScan");
       
-      // 틱톡 픽셀 SNS 공유 전송
-      window.dataLayer = window.dataLayer || [];
-      window.dataLayer.push({'event': 'TP-Share'});
+      // SNS 공유 다이렉트 전송 (1회 제한)
+      if (!sessionStorage.getItem('tp_share_fired')) {
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({'event': 'TP-Share'});
+        if(window.ttq) window.ttq.track('Share');
+        sessionStorage.setItem('tp_share_fired', 'true');
+      }
 
       if (platform === 'x') {
         window.open(`https://twitter.com/intent/tweet?url=${shareUrl}&text=${shareText}`, '_blank');
