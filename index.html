@@ -410,6 +410,16 @@
     let muted = true; 
     let isTransitioning = false; 
     let currentScore = 0; 
+    let currentLang = 'EN';
+    let step = 0, answers = [];
+
+    // 페이지 완전 새로고침 시 저장된 언어 불러오기 (GA 발송 없이 조용히 세팅)
+    document.addEventListener('DOMContentLoaded', () => {
+        const savedLang = sessionStorage.getItem('saved_lang_v2');
+        if (savedLang && savedLang !== 'EN') {
+            changeLang(savedLang, true); 
+        }
+    });
 
     function initAudio() {
       if (!actx) {
@@ -480,34 +490,20 @@
       if(!muted) playSfx('tap');
     }
 
-    // [이벤트 유실 및 언어 초기화 방지] 페이지 새로고침을 없애고 소프트 리셋 적용
+    // 완전 새로고침 복구 및 틱톡 중복 방지 로직 (sessionStorage 활용)
     function handleRetry() {
-      // 틱톡 및 GA4 매핑용 태그 폭격 (1세션 1회 제한)
-      if (!sessionStorage.getItem('retry_fired_v3')) {
+      if (!sessionStorage.getItem('retry_fired_v4')) {
         window.dataLayer = window.dataLayer || [];
-        // 틱톡 매핑
+        // GTM 연동용 폭격 (틱톡 및 GA4 모두 커버)
         window.dataLayer.push({'event': 'TP-Retry'});
-        // GA4 매핑
         window.dataLayer.push({'event': '성공화면 재시도'});
         window.dataLayer.push({'event': 'GA_재시도'});
-        sessionStorage.setItem('retry_fired_v3', 'true');
+        
+        sessionStorage.setItem('retry_fired_v4', 'true');
       }
       
-      // 상태 초기화 (새로고침 없이 내부 메모리만 초기화)
-      step = 0;
-      answers = [];
-      currentScore = 0;
-      isTransitioning = false;
-
-      // 시각적 요소 초기화
-      const bloodFill = document.getElementById('bloodFill');
-      bloodFill.setAttribute("y", "100");
-      bloodFill.setAttribute("height", "0");
-      document.getElementById('res-perc').innerText = "0% K-BLOOD";
-      document.getElementById('thumbBtn').classList.remove('scanning');
-
-      // 첫 화면으로 부드럽게 이동 (선택했던 다국어 설정은 유지됨)
-      showStep('hero');
+      // 언어가 유지된 채로 완전한 새 세션 시작
+      setTimeout(() => location.reload(), 400); 
     }
 
     const driveIds = {
@@ -567,7 +563,7 @@
       ZU: { 
         sub: "Skena imithambo yakho ukuze<br>ubone amazinga e-K-Culture", load: "IHLOLA IGAZI...", tap: "THINTA UKUZE UQALE",
         back: "EMUVA", retry: "ZAMA FUTHI", copy: "KOPISHA ISIXHUNGANISO", share: "YABELANA NGEMIPHUMELA YAKHO",
-        res1_t: "OSINDE EKOREA", res1_d: "Ujwayele ngokuphelele isigqi saseKorea. Kusukela eSeoul kuya eBusan, ungasinda kalula kumasiko e-K asheshayo nanamandla.",
+        res1_t: "OSINDE EKOREA", res1_d: "Ujwayele ngokuphelele isigqi saseKorea. Kusukela eSeoul 구ya eBusan, ungasinda kalula kumasiko e-K asheshayo nanamandla.",
         res2_t: "UMPHEFUMULO OXUBILE", res2_d: "Ulinganisele ngokuphelele. Uyakwazisa ukuphumula kwaseMzansi, kodwa ungasheshisa futhi ujwayele isigqi saseKorea uma kudingeka.",
         res3_t: "UPHILILE KAKHULU", res3_d: "Umphefumulo waseMzansi ongu-100%. Ubeka ukuthula phambili kanye nendlela yokuphila ye-'Now Now'. Isivinini eseqile saseKorea singaba ukushaqeka okukhulu kwamasiko kuwe!"
       },
@@ -580,13 +576,18 @@
       }
     };
 
-    let step = 0, answers = [];
-    let currentLang = 'EN';
-
-    function changeLang(l) {
-        document.querySelectorAll('#langBox span').forEach(s => s.classList.remove('active'));
-        event.target.classList.add('active');
+    function changeLang(l, isInit = false) {
+        document.querySelectorAll('.lang-toggle').forEach(s => {
+            if (s.innerText === l) {
+                s.classList.add('active');
+            } else {
+                s.classList.remove('active');
+            }
+        });
         currentLang = l;
+        
+        // 새로고침 시에도 언어가 기억되도록 sessionStorage에 저장
+        sessionStorage.setItem('saved_lang_v2', l); 
         
         document.getElementById('hero-subtitle').innerHTML = i18nGlobal[l].sub;
         document.getElementById('load-txt').innerText = i18nGlobal[l].load;
@@ -596,10 +597,12 @@
         document.getElementById('copyLinkBtn').innerText = i18nGlobal[l].copy;
         document.getElementById('shareText').innerText = i18nGlobal[l].share;
 
-        // GA4 매핑용 다국어 태그 (세션 중복 제한 없이 자유롭게 발송)
-        window.dataLayer = window.dataLayer || [];
-        window.dataLayer.push({'event': '언어_변경', '선택_언어': l});
-        window.dataLayer.push({'event': 'GA_다국어 변경 버튼'});
+        // 화면 렌더링 시에는 GA로 쏘지 않고 사용자가 직접 눌렀을 때만 쏘도록 조건 처리
+        if (!isInit) {
+            window.dataLayer = window.dataLayer || [];
+            window.dataLayer.push({'event': '언어_변경', '선택_언어': l});
+            window.dataLayer.push({'event': 'GA_다국어 변경 버튼'});
+        }
 
         if (step < 5 && document.getElementById('quiz').classList.contains('active')) {
             renderQuiz();
@@ -614,15 +617,12 @@
       isTransitioning = true;
       playSfx('intro');
       
-      // 틱톡 시작 버튼 클릭 및 GA4 시작 매핑 (1세션 1회 발송)
-      if (!sessionStorage.getItem('tp_click_fired_v3')) {
+      // 틱톡 및 GA 시작 매핑 (1세션 1회 제한으로 중복 방지)
+      if (!sessionStorage.getItem('tp_click_fired_v4')) {
         window.dataLayer = window.dataLayer || [];
-        // 틱톡
         window.dataLayer.push({'event': 'TP-ClickButton'});
-        // GA4
         window.dataLayer.push({'event': '퀴즈시작버튼 클릭'}); 
-        if(window.ttq) window.ttq.track('ClickButton');
-        sessionStorage.setItem('tp_click_fired_v3', 'true');
+        sessionStorage.setItem('tp_click_fired_v4', 'true');
       }
 
       const btn = document.getElementById('thumbBtn');
@@ -712,21 +712,18 @@
     }
 
     function runLoading() {
-      // 틱톡 및 GA4 완료페이지 ROAS 부풀림 방지 (1세션 1회 발송)
-      if (!sessionStorage.getItem('conversion_fired_v3')) {
+      // 틱톡 전환 측정 (ROAS 무결성 유지 1세션 1회)
+      if (!sessionStorage.getItem('conversion_fired_v4')) {
         window.dataLayer = window.dataLayer || [];
         
-        // 틱톡 픽셀 매핑
+        // 틱톡 GTM 트리거 이름들과 일치하도록 융단 폭격 
         window.dataLayer.push({'event': 'SubmitForm'});
         window.dataLayer.push({'event': 'Tiktok-SubmitForm'}); 
-        // GA4 매핑
+        // GA4 GTM 트리거 이름들과 일치하도록 폭격
         window.dataLayer.push({'event': 'GA_완료페이지'});
         window.dataLayer.push({'event': 'GA4 - 성공결과페이지'});
         
-        if (typeof window.ttq !== 'undefined') {
-          window.ttq.track('SubmitForm');
-        }
-        sessionStorage.setItem('conversion_fired_v3', 'true');
+        sessionStorage.setItem('conversion_fired_v4', 'true');
       }
       showStep('loading');
       setTimeout(showResult, 1500);
@@ -785,16 +782,15 @@
       const shareUrl = encodeURIComponent(window.location.href);
       const shareText = encodeURIComponent("Check out my K-Culture Level! 🩸 #KBloodScan");
       
-      // SNS 공유 다이렉트 전송 (세션 중복 제한 없이 자유롭게 발송)
-      window.dataLayer = window.dataLayer || [];
-      // 틱톡
-      window.dataLayer.push({'event': 'TP-Share'});
-      // GA4 
-      window.dataLayer.push({'event': '공유하기'});
-      window.dataLayer.push({'event': 'GA_링크공유'});
-      window.dataLayer.push({'event': 'GA_SNS공유'});
-
-      if(window.ttq) window.ttq.track('Share');
+      // SNS 공유 전송 (1세션 1회 제한으로 중복 발사 방지)
+      if (!sessionStorage.getItem('tp_share_fired_v4')) {
+          window.dataLayer = window.dataLayer || [];
+          window.dataLayer.push({'event': 'TP-Share'});
+          window.dataLayer.push({'event': '공유하기'});
+          window.dataLayer.push({'event': 'GA_링크공유'});
+          window.dataLayer.push({'event': 'GA_SNS공유'});
+          sessionStorage.setItem('tp_share_fired_v4', 'true');
+      }
 
       if (platform === 'x') {
         window.open(`https://twitter.com/intent/tweet?url=${shareUrl}&text=${shareText}`, '_blank');
